@@ -1,0 +1,34 @@
+# ---- 敏感信息 ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ---- 数据库 / 备份 ----
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+data/backups/
+
+# ---- 依赖 ----
+node_modules/
+web/node_modules/
+
+# ---- 构建产物 ----
+web/dist/
+dist/
+
+# ---- 日志 ----
+logs/
+*.log
+npm-debug.log*
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+.trae/
+.idea/
+.vscode/
+*.swp
+*.swo
