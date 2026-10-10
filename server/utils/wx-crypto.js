@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
  * SHA1 签名（参数排序后拼接）
  * @param  {...string} args
  */
-function sha1(...args) {
+export function sha1(...args) {
   return crypto.createHash('sha1').update(args.sort().join('')).digest('hex');
 }
 

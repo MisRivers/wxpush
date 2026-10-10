@@ -59,6 +59,14 @@ export function migrate() {
     // 列已存在时 SQLite 抛错，忽略即可
   }
 
+  // ---- 增量迁移：users 表增加 session_version 列（单设备登录） ----
+  try {
+    conn.exec("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
+    logger.info('migration: users.session_version column added');
+  } catch {
+    // 列已存在
+  }
+
   // ---- 增量迁移：apps 表增加企业微信验证字段 ----
   for (const col of [
     'verify_file_name TEXT',

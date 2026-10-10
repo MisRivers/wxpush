@@ -323,6 +323,8 @@ do_upgrade() {
   fi
 
   info "覆盖代码（保留 .env / data / logs / backups）..."
+  # 关键：先删除旧的 web/dist，避免旧的 hashed 文件残留导致 index.html 与资源不一致
+  rm -rf web/dist
   # 用 cp -a 替代 rsync（rsync 可能未安装）
   # 先把需要保留的文件临时备份到 /tmp，cp 完再恢复
   local tmp_preserve="/tmp/wxpush-preserve-${ts}"

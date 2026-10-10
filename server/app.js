@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import config from './config.js';
 import { logger } from './utils/logger.js';
@@ -90,16 +90,40 @@ export function buildApp() {
   // 让后端直接服务 web/dist，Nginx 只需一行 proxy_pass 即可
   const staticDir = resolve(config.STATIC_DIR);
   if (existsSync(staticDir)) {
+    // 预读 index.html 到内存（所有 SPA 返回都用这个版本，避免磁盘文件被替换时不一致）
+    const indexPath = join(staticDir, 'index.html');
+    let indexHtml = null;
+    try {
+      indexHtml = readFileSync(indexPath, 'utf-8');
+    } catch {
+      logger.warn({ path: indexPath }, 'index.html not found in static dir');
+    }
+
+    // 显式注册 GET / → 返回内存中的 index.html（不依赖 fastifyStatic 目录索引）
+    // 同时禁用 fastifyStatic 的 index: false，让它不处理 GET /
+    if (indexHtml) {
+      app.get('/', (req, reply) => {
+        reply.header('content-type', 'text/html; charset=utf-8');
+        reply.header('cache-control', 'no-cache');
+        reply.send(indexHtml);
+      });
+    }
+
+    // fastifyStatic 只负责处理 /assets/*、/logo.png 等真实的静态文件
+    // 不处理 GET /（已显式注册），不做 SPA fallback（由 setNotFoundHandler 负责）
     app.register(fastifyStatic, {
       root: staticDir,
       prefix: '/',
-      wildcard: false, // 不注册通配符路由，手动控制 fallback
+      wildcard: true,
+      index: false, // 禁止自动把 / 映射到 index.html，由显式 GET / handler 处理
       cacheControl: true,
       maxAge: '7d',
       lastModified: true,
     });
 
-    // SPA 回退：非 API/非 .send 的未匹配路由返回 index.html
+    // SPA 回退：仅对 HTML 路由返回 index.html（内存版本，无缓存）
+    // 静态文件（js/css/png等）必须返回 404，避免把 index.html 当成 JS/CSS 返回
+    const STATIC_EXTS = /\.(js|mjs|cjs|css|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|eot|otf|mp4|webm|ogg|mp3|wav|pdf|json|xml|txt|map|wasm)$/i;
     app.setNotFoundHandler((req, reply) => {
       const url = req.url.split('?')[0];
       // API 和推送路由的 404 返回 JSON
@@ -110,11 +134,21 @@ export function buildApp() {
       if (url.startsWith('/WW_verify_')) {
         return reply.code(404).send('Not Found');
       }
-      // 其余返回 index.html（Vue Router 接管前端路由）
-      return reply.sendFile('index.html');
+      // 静态资源文件 → 返回 404，不能回退到 index.html（会导致 MIME type 错误）
+      if (STATIC_EXTS.test(url)) {
+        return reply.code(404).send({ code: 40400, message: 'static file not found' });
+      }
+      // 其余返回内存中的 index.html（Vue Router 接管前端路由）
+      // 不使用 sendFile('index.html')，避免磁盘文件被替换时版本不一致
+      if (indexHtml) {
+        reply.header('content-type', 'text/html; charset=utf-8');
+        reply.header('cache-control', 'no-cache');
+        return reply.send(indexHtml);
+      }
+      reply.code(404).send({ code: 40400, message: 'index.html not available' });
     });
 
-    logger.info({ dir: staticDir }, 'static file serving enabled');
+    logger.info({ dir: staticDir, hasIndex: !!indexHtml }, 'static file serving enabled');
   } else {
     logger.warn({ dir: staticDir }, 'static dir not found, SPA serving disabled');
     app.setNotFoundHandler((req, reply) => {

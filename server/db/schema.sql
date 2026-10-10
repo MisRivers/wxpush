@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT    NOT NULL,                 -- bcrypt(cost=12)
   role          TEXT    NOT NULL DEFAULT 'admin',  -- admin（预留）
   pw_algo       TEXT    NOT NULL DEFAULT 'v1',      -- v1=bcrypt(plaintext) v2=bcrypt(sha256(plaintext))
+  session_version INTEGER NOT NULL DEFAULT 0,       -- 单设备登录：每次登录递增，旧 JWT 失效
   created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at    INTEGER NOT NULL DEFAULT (unixepoch())
 );

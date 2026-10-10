@@ -31,9 +31,15 @@ export async function adminAuthRequired(req) {
 
   // 用户必须存在
   const db = getDB();
-  const user = db.prepare('SELECT id, username, role FROM users WHERE id=?').get(payload.uid);
+  const user = db.prepare('SELECT id, username, role, session_version FROM users WHERE id=?').get(payload.uid);
   if (!user) {
     throw new AppError(40104, 'user not found', { statusCode: 401 });
+  }
+
+  // 单设备登录：JWT 中的 sv 必须与数据库一致
+  // sv 不匹配 = 已有新设备登录，旧 token 失效
+  if (payload.sv !== undefined && payload.sv !== user.session_version) {
+    throw new AppError(40105, 'session expired: another device logged in', { statusCode: 401 });
   }
 
   req.adminUser = user;
@@ -41,10 +47,11 @@ export async function adminAuthRequired(req) {
 
 /**
  * 生成管理后台 JWT（7 天有效期）
+ * 包含 session_version，用于单设备登录校验
  */
 export function signAdminJWT(user) {
   return jwt.sign(
-    { uid: user.id, username: user.username, type: 'admin' },
+    { uid: user.id, username: user.username, type: 'admin', sv: user.session_version ?? 0 },
     config.JWT_SECRET,
     { expiresIn: config.JWT_EXPIRES_IN }
   );

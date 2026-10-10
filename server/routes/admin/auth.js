@@ -135,7 +135,7 @@ async function initHandler(req, reply) {
   // 审计
   audit(db, { actor: username, action: 'init', target: JSON.stringify({ user_id: result.lastInsertRowid }), clientIp: req.ip, requestId: req.id });
 
-  const jwt = signAdminJWT({ id: result.lastInsertRowid, username, role: 'admin' });
+  const jwt = signAdminJWT({ id: result.lastInsertRowid, username, role: 'admin', session_version: 0 });
   logger.info({ userId: result.lastInsertRowid, username, ip: req.ip }, 'admin initialized');
 
   reply.code(201).send({
@@ -219,9 +219,14 @@ async function loginHandler(req, reply) {
   // 登录成功：重置该 IP 当日失败计数
   resetDailyQuota(lockKey);
 
-  const jwt = signAdminJWT({ id: user.id, username: user.username, role: user.role });
+  // 单设备登录：递增 session_version，使旧设备的 JWT 失效
+  db.prepare('UPDATE users SET session_version=session_version+1, updated_at=unixepoch() WHERE id=?').run(user.id);
+  // 重新读取递增后的 session_version
+  const updated = db.prepare('SELECT session_version FROM users WHERE id=?').get(user.id);
+
+  const jwt = signAdminJWT({ id: user.id, username: user.username, role: user.role, session_version: updated.session_version });
   audit(db, { actor: user.username, action: 'login', target: null, clientIp: ip, requestId: req.id });
-  logger.info({ userId: user.id, username: user.username, ip }, 'admin login');
+  logger.info({ userId: user.id, username: user.username, ip, sv: updated.session_version }, 'admin login (new session, old devices kicked)');
 
   reply.send({
     code: 0,

@@ -42,8 +42,11 @@ request.interceptors.response.use(
     if (status === 401) {
       // 未登录或 token 失效
       setToken('');
+      const code = data?.code;
       const fullPath = location.pathname + location.hash;
-      if (!fullPath.startsWith('/#/login') && !fullPath.startsWith('/#/init')) {
+      if (code === 40105) {
+        ElMessage.warning('该账号已在其他设备登录，本设备已自动退出');
+      } else if (!fullPath.startsWith('/#/login') && !fullPath.startsWith('/#/init')) {
         ElMessage.warning('登录已失效，请重新登录');
       }
       // 轻量跳转：避免循环依赖 router
